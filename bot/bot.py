@@ -185,9 +185,9 @@ async def _vision_message_handle_fn(
     user_id = update.message.from_user.id
     current_model = db.get_user_attribute(user_id, "current_model")
 
-    if current_model not in ["gpt-4-vision-preview", "gpt-4o", "gpt-4o-mini"]:
+    if current_model not in ["gpt-4o", "gpt-4o-mini"]:
         await update.message.reply_text(
-            "🥲 Images processing is only available for <b>gpt-4-vision-preview</b> and <b>gpt-4o</b> model. Please change your settings in /settings",
+            "🥲 Images processing is only available for <b>gpt-4o</b> and <b>gpt-4o-mini</b> models. Please change your settings in /settings",
             parse_mode=ParseMode.HTML,
         )
         return
@@ -334,6 +334,14 @@ async def unsupport_message_handle(update: Update, context: CallbackContext, mes
     await update.message.reply_text(error_text)
     return
 
+
+def get_current_model(user_id: int):
+    cur_model = db.get_user_attribute(user_id, "current_model")
+    if cur_model in config.models["info"]:
+        return cur_model
+    return config.models["available_text_models"][0]
+
+
 async def message_handle(update: Update, context: CallbackContext, message=None, use_new_dialog_timeout=True):
     # check if bot was mentioned (for group chats)
     if not await is_bot_mentioned(update, context):
@@ -360,7 +368,7 @@ async def message_handle(update: Update, context: CallbackContext, message=None,
         await generate_image_handle(update, context, message=message)
         return
 
-    current_model = db.get_user_attribute(user_id, "current_model")
+    current_model = get_current_model(user_id)
 
     async def message_handle_fn():
         # new dialog timeout
@@ -459,14 +467,7 @@ async def message_handle(update: Update, context: CallbackContext, message=None,
             await update.message.reply_text(text, parse_mode=ParseMode.HTML)
 
     async with user_semaphores[user_id]:
-        if current_model == "gpt-4-vision-preview" or current_model == "gpt-4o" or update.message.photo is not None and len(update.message.photo) > 0:
-
-            logger.error(current_model)
-            # What is this? ^^^
-
-            if current_model != "gpt-4o" and current_model != "gpt-4-vision-preview":
-                current_model = "gpt-4o"
-                db.set_user_attribute(user_id, "current_model", "gpt-4o")
+        if update.message.photo is not None and len(update.message.photo) > 0:
             task = asyncio.create_task(
                 _vision_message_handle_fn(update, context, use_new_dialog_timeout=use_new_dialog_timeout)
             )
@@ -678,7 +679,7 @@ async def set_chat_mode_handle(update: Update, context: CallbackContext):
 
 
 def get_settings_menu(user_id: int):
-    current_model = db.get_user_attribute(user_id, "current_model")
+    current_model = get_current_model(user_id)
     text = config.models["info"][current_model]["description"]
 
     text += "\n\n"
@@ -749,6 +750,9 @@ async def show_balance_handle(update: Update, context: CallbackContext):
 
     details_text = "🏷️ Details:\n"
     for model_key in sorted(n_used_tokens_dict.keys()):
+        if model_key not in config.models["info"]:
+            continue
+
         n_input_tokens, n_output_tokens = n_used_tokens_dict[model_key]["n_input_tokens"], n_used_tokens_dict[model_key]["n_output_tokens"]
         total_n_used_tokens += n_input_tokens + n_output_tokens
 
